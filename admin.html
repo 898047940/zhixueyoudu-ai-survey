@@ -1,0 +1,34 @@
+<!doctype html><html lang="zh-CN"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>智学有度｜调查结果后台</title>
+<style>body{font:16px/1.7 system-ui;background:#f4f7f3;color:#17231d;margin:0}main{max-width:1000px;margin:40px auto;padding:20px}section,article{background:white;border:1px solid #dce6de;padding:24px;border-radius:16px;margin:18px 0}input,button{font:inherit;padding:10px;border-radius:8px;border:1px solid #ccc}input{max-width:90%;width:420px}button{background:#176b4b;color:white;cursor:pointer}button:disabled{opacity:.5}#charts{display:grid;grid-template-columns:repeat(auto-fit,minmax(270px,1fr));gap:16px}.bar{background:#e1f2e7;margin:6px 0;padding:5px 10px;border-left:5px solid #176b4b}#status{color:#7e412b}table{border-collapse:collapse;width:100%;font-size:14px}td,th{text-align:left;border-bottom:1px solid #ddd;padding:10px}#list{overflow:auto}small{color:#63756a}</style>
+<main><h1>智学有度 · 调查结果</h1><p>查看云端答卷、统计分布与导出数据。</p>
+<section id="login"><form id="loginForm"><label for="password">后台管理密码</label><p><input id="password" type="password" autocomplete="current-password" required placeholder="粘贴私密管理密码"></p><button>登录查看</button></form><small>密码仅在当前页面内存中使用；关闭或刷新页面后需要重新输入。</small></section>
+<p id="status" role="status"></p><div id="dashboard" hidden><section><h2>已收集 <span id="count">0</span> 份答卷</h2><button id="refresh">刷新结果</button> <button id="export">导出全部 CSV</button> <button id="logout">退出</button><p><small>下方统计基于已加载答卷，属于描述性统计，不代表显著性检验或因果结论。</small></p></section><div id="charts"></div><section id="list"></section></div></main>
+<script>
+const endpoint='https://ekvboyqgtndufpalgnda.supabase.co/functions/v1/survey-results';
+const $=id=>document.getElementById(id);let token='',rows=[],busy=false;
+const labels={student_status:'学校范围',grade:'年级',major:'专业',goal:'学习目标',frequency:'使用频率',duration:'单次时长',tools:'工具类别',scene:'使用场景',feature:'使用功能',useful:'有用性',efficient:'效率',easy:'易用性',accurate:'准确性',personalized:'个性化',continue:'持续使用',value_task:'高价值任务',privacy:'隐私顾虑',wrong:'错误顾虑',integrity:'诚信顾虑',dependence:'依赖顾虑',tradeoff:'隐私效率权衡',pay:'付费意愿',paid_feature:'付费功能',price:'月度价格',experience:'使用经验',school_action:'学校建议',platform_action:'平台建议',student_action:'学生建议',improvement:'改进建议'};
+function node(tag,text){const e=document.createElement(tag);e.textContent=text;return e;}
+function render(){
+ $('count').textContent=rows.length;$('charts').replaceChildren();
+ for(const key of ['frequency','pay','price','scene','paid_feature','grade','major']){
+  const card=node('article','');card.append(node('h3',labels[key]));const counts=new Map();
+  for(const row of rows){const value=row.answers[key];for(const v of (Array.isArray(value)?value:[value||'未填写']))counts.set(String(v),(counts.get(String(v))||0)+1);}
+  for(const [v,n] of [...counts].sort((a,b)=>b[1]-a[1])){const el=node('div',v+'：'+n+'（'+(rows.length?Math.round(n/rows.length*100):0)+'%）');el.className='bar';card.append(el);}
+  if(!rows.length)card.append(node('p','暂无答卷'));$('charts').append(card);
+ }
+ $('list').replaceChildren(node('h3','最近 100 份答卷（完整内容见 CSV）'));
+ const table=document.createElement('table');const head=document.createElement('tr');for(const s of ['提交时间','年级','专业','频率','付费意愿'])head.append(node('th',s));table.append(head);
+ for(const r of rows.slice(-100).reverse()){const tr=document.createElement('tr');for(const v of [new Date(r.created_at).toLocaleString(),r.answers.grade,r.answers.major,r.answers.frequency,r.answers.pay])tr.append(node('td',v||'—'));table.append(tr);}$('list').append(table);
+}
+async function load(){
+ if(busy)return;busy=true;$('status').textContent='正在加载全部答卷…';$('export').disabled=true;$('refresh').disabled=true;
+ try{const all=[];let total=Infinity;while(all.length<total){const r=await fetch(endpoint+'?offset='+all.length,{headers:{'x-admin-token':token},signal:AbortSignal.timeout(30000)});const d=await r.json();if(!r.ok)throw Error(d.error||'加载失败');if(!Array.isArray(d.rows))throw Error('后台返回异常');all.push(...d.rows);total=d.total;if(!d.rows.length)break;}
+ rows=all;render();$('login').hidden=true;$('dashboard').hidden=false;$('status').textContent=rows.length?'已更新：'+new Date().toLocaleString():'后台连接正常，目前还没有正式答卷。';$('export').disabled=false;
+ }catch(e){$('status').textContent=e.message||'网络连接失败，请重试';}finally{busy=false;$('refresh').disabled=false;}
+}
+function csvCell(v){let s=Array.isArray(v)?v.join('；'):String(v??'');if(/^[\s]*[=+@-]/.test(s))s="'"+s;return '"'+s.replaceAll('"','""')+'"';}
+$('loginForm').onsubmit=e=>{e.preventDefault();token=$('password').value.trim();$('password').value='';load();};
+$('refresh').onclick=load;$('logout').onclick=()=>{location.reload();};
+$('export').onclick=()=>{const keys=Object.keys(labels),data=[['答卷编号','提交时间',...keys.map(k=>labels[k])],...rows.map(r=>[r.id,r.created_at,...keys.map(k=>r.answers[k])])];const blob=new Blob(['\ufeff'+data.map(r=>r.map(csvCell).join(',')).join('\r\n')],{type:'text/csv;charset=utf-8'});const url=URL.createObjectURL(blob),a=document.createElement('a');a.href=url;a.download='智学有度-全部答卷.csv';a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);};
+</script></html>
+
