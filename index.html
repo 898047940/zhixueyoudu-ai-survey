@@ -17,7 +17,7 @@ header{padding:22px 0;display:flex;justify-content:space-between;align-items:cen
 <div class="wrap">
 <header><div class="brand"><span class="logo">智</span><span>市调赛 · Market Lab</span></div><span class="tag">大学生 AI 学习辅导工具研究</span></header>
 <section class="hero"><div><span class="eyebrow"><i class="dot"></i>“智学有度”调研问卷</span><h1>AI 让学习更高效，<span>也需要边界。</span></h1><p>我们正在研究大学生如何使用 AI 学习辅导工具、哪些功能真正有价值，以及隐私、准确性与学术诚信如何影响持续使用和付费意愿。</p><div class="meta"><div><strong>6–8 min</strong>预计用时</div><div><strong>匿名</strong>不收集姓名</div><div><strong>本校及周边</strong>目标样本</div></div></div><aside class="hero-card"><h2>你的答案会帮助我们判断</h2><p>什么样的 AI 学习工具，才值得被长期使用。</p><ul><li>✓ 覆盖使用行为与学习场景</li><li>✓ 衡量效率收益与风险顾虑</li><li>✓ 了解功能偏好与可接受价格</li></ul></aside></section>
-<div class="info"><strong>填写说明：</strong>请根据最近 6 个月的真实体验作答。没有使用过 AI 学习工具也可以填写，我们需要保留非用户作为对照组。问卷仅用于市调赛研究分析。</div>
+<div class="info"><strong>填写说明：</strong>请根据最近 6 个月的真实体验作答。没有使用过 AI 学习工具也可以填写，我们需要保留非用户作为对照组。答卷将保存到研究团队的云端数据库，仅供团队进行市调赛研究分析；请勿在开放题中填写姓名、学号或联系方式。</div>
 <form id="surveyForm">
 <div class="survey-card"><div class="progress"><i id="progressBar"></i></div>
 <section class="section" id="basic"><div class="section-title"><b>01</b><h2>基本信息与学习背景</h2></div>
@@ -48,7 +48,7 @@ header{padding:22px 0;display:flex;justify-content:space-between;align-items:cen
 </section>
 <div class="submit"><span class="consent">提交即表示你同意本问卷将以匿名形式用于市调赛研究。</span><button type="submit">提交我的回答 →</button></div>
 </div></form>
-<div class="success" id="success"><div class="success-icon">✓</div><h2>感谢你的参与！</h2><p>你的回答已记录在本设备中，会用于分析大学生对 AI 学习辅导工具的需求、风险与付费意愿。</p><button class="export" id="exportBtn" type="button">导出本机答卷 CSV</button></div>
+<div class="success" id="success"><div class="success-icon">✓</div><h2>感谢你的参与！</h2><p>你的回答已保存到研究团队的云端数据库。感谢你为本次研究提供帮助。</p><button hidden id="exportBtn" type="button">导出本机答卷 CSV</button></div>
 <footer class="foot"><span>© 2026 “智学有度”市场调研</span><span>本问卷仅用于学术与比赛研究，不收集姓名和联系方式。</span></footer>
 </div>
 <script>
@@ -58,7 +58,19 @@ function checked(name){return [...document.querySelectorAll('[name="'+name+'"]:c
 function formData(){const fd=new FormData(form), o={submittedAt:new Date().toISOString()};for(const [k,v] of fd.entries()){if(o[k]){o[k]=Array.isArray(o[k])?o[k].concat(v):[o[k],v]}else{o[k]=v}}['goal','scene','feature','value_task','paid_feature'].forEach(k=>{o[k]=checked(k)});return o}
 function updateProgress(){const total=20;let done=0;for(const q of form.querySelectorAll('input[required],select[required]')){if((q.type==='radio'||q.type==='checkbox')&&form.querySelector('[name="'+q.name+'"]:checked'))done++;else if(q.value)done++}bar.style.width=Math.max(8,Math.min(100,Math.round(done/total*100)))+'%'}
 form.addEventListener('change',e=>{const box=e.target.closest('.limited');if(box&&e.target.checked&&box.querySelectorAll('input:checked').length>Number(box.dataset.limit)){e.target.checked=false;alert('本题最多选择 '+box.dataset.limit+' 项。')}updateProgress()});form.addEventListener('input',updateProgress);
-form.addEventListener('submit',e=>{e.preventDefault();const old=JSON.parse(localStorage.getItem(key)||'[]');old.push(formData());localStorage.setItem(key,JSON.stringify(old));form.style.display='none';success.classList.add('show');window.scrollTo({top:0,behavior:'smooth'})});
+const backend='https://ekvboyqgtndufpalgnda.supabase.co';
+const publicKey='sb_publishable_2y9s71ay3Blb9MtITnpJbA_hdCM-IQS';
+let submitting=false, submissionId=crypto.randomUUID();
+form.addEventListener('submit',async e=>{
+ e.preventDefault(); if(submitting)return;
+ submitting=true; const button=form.querySelector('button[type=submit]');button.disabled=true;button.textContent='正在保存…';
+ try{
+ const response=await fetch(backend+'/rest/v1/survey_responses',{method:'POST',headers:{apikey:publicKey,'Content-Type':'application/json',Prefer:'return=minimal'},body:JSON.stringify({id:submissionId,answers:formData()}),signal:AbortSignal.timeout(20000)});
+ if(!response.ok){const body=await response.json().catch(()=>({}));if(!(response.status===409&&body.code==='23505'))throw Error('提交未成功，请稍后重试。');}
+ form.style.display='none';success.classList.add('show');window.scrollTo({top:0,behavior:'smooth'});
+ }catch(err){alert('未能确认保存成功。你的填写内容仍保留在页面中，请检查网络后重试，不要关闭页面。');}
+ finally{submitting=false;button.disabled=false;button.textContent='提交我的回答 →';}
+});
 document.getElementById('exportBtn').addEventListener('click',()=>{const rows=JSON.parse(localStorage.getItem(key)||'[]');if(!rows.length)return;const keys=[...new Set(rows.flatMap(r=>Object.keys(r)))];const esc=v=>'"'+String(Array.isArray(v)?v.join('；'):v??'').replaceAll('"','""')+'"';const csv='\ufeff'+[keys.map(esc).join(','),...rows.map(r=>keys.map(k=>esc(r[k])).join(','))].join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob([csv],{type:'text/csv;charset=utf-8'}));a.download='智学有度-本机答卷.csv';a.click();URL.revokeObjectURL(a.href)});updateProgress();
 </script>
 </body>
